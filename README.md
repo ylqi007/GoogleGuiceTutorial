@@ -406,6 +406,185 @@ Singletons are most useful for:
 ### Using `NO_SCOPE` in tests
 > If you are testing a Guice module that uses scopes (especially custom scopes) but don't actually care about the scoping of the binding in the tests, you can use Guice's `Scopes.NO_SCOPE` to override a specific scope. `NO_SCOPE` is an implementation of Scope that returns a new instance every time an object is requested.
 
+
+## Bindings
+> A **binding** is an object that corresponds to an entry in the Guice map. You add new entries into the Guice map by creating bindings.
+> 通过创建 binding 向 Guice map 中添加新的条目。
+
+### Creating Bindings
+> To create bindings, extends `AbstractModule` and override its `configure()` method. In the method body, call `bind()` to specify each binding. These methods are type checked so the compiler can report errors if you use the wrong types.
+> Once you've created your modules, pass them as argument to the `Guice.createInjector()` to build an injector, which can then be used to bootstrap your application.
+> Use modules to create **linked bindings**, **instance bindings**, **@Provides methods**, **provider bindings**, **constructor bindings** and **untargetted bindings**.
+
+### 1. Linked Bindings
+> Linked bindings map a type to its implementation. This example maps the interface `TransactionLog` to the implementation `DatabaseTransactionLog`:
+```java
+public class BillingModule extends AbstractModule {
+    @Provides
+    TransactionLog provideTransactionLog(DatabaseTransactionLog impl) {
+        return impl; 
+    }
+}
+```
+> Now, when you call `injector.getInstance(TransactionLog.class)`, or when the injector encounters a dependency on `TransactionLog`, it will use a `DatabaseTransactionLog`.
+
+In addition to using `@Provides` method to create linked bindings, you can also use the `bind` method in Guice modules.
+```java
+bind(DatabaseTransactionLog.class).to(MySqlDatabaseTransactionLog.class);
+```
+
+### 2. Binding Annotations
+> Occasionally you'll want multiple bindings for the same type. For example, you might want both a PayPal credit card processor and a Google Checkout processor. To enable this, bindings support an optional binding annotation. The **annotation** and **type** together uniquely identify a binding. This pair is called a key.
+
+#### Defining binding annotations
+> Binding annotations are Java annotations that are annotated with meta annotation @Qualifier or @BindingAnnotation.
+
+#### `@Named`
+Guice comes with a built-in binding annotation `@Named` that takes a string:
+```java
+public class RealBillingService implements BillingService {
+
+    @Inject
+    public RealBillingService(@Named("Checkout") CreditCardProcessor processor,
+        TransactionLog transactionLog) {
+        ...
+    }
+}
+```
+
+To bind a specific name, use Names.named() to create an instance to pass to annotatedWith:
+```java
+final class CreditCardProcessorModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        bind(CreditCardProcessor.class)
+                .annotatedWith(Names.named("Checkout"))
+                .to(CheckoutCreditCardProcessor.class);
+    }
+}
+```
+
+### 3. Instance Bindings
+You can bind a type to a specific instance of that type. This is usually only useful for objects that don't have dependencies of their own, such as value objects:
+```java
+bind(String.class)
+    .annotatedWith(Names.named("JDBC URL"))
+    .toInstance("jdbc:mysql://localhost/pizza");
+bind(Integer.class)
+  .annotatedWith(Names.named("login timeout seconds"))
+  .toInstance(10);
+```
+
+Avoid using `.toInstance` with objects that are complicated to create, since it can slow down application startup. You can use an `@Provides` method instead.
+
+You can also bind constants using `bindConstant`:
+```java
+  bindConstant()
+      .annotatedWith(HttpPort.class)
+      .to(8080);
+```
+`bindConstant` is a shortcut to bind primitive types and other constant types like `String`, `enum` and `Class`.
+
+### 4. `@Provides` Methods
+> When you need code to create an object, use an `@Provides` method. The method must be defined within a module, and it must have an `@Provides` annotation. The method's return type is the bound type. Whenever the injector needs an instance of that type, it will invoke the method.
+```java
+public class BillingModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        ...
+    }
+
+    // 需要在代码中创建对象
+    @Provides
+    static TransactionLog provideTransactionLog() {
+        DatabaseTransactionLog transactionLog = new DatabaseTransactionLog();
+        transactionLog.setJdbcUrl("jdbc:mysql://localhost/pizza");
+        transactionLog.setThreadPoolSize(30);
+        return transactionLog;
+    }
+}
+```
+TIP: `@Provides` methods can be static methods or instance methods.
+
+#### With binding annotation
+> If the @Provides method has a binding annotation like `@PayPal` or `@Named("Checkout")`, Guice binds the annotated type. Dependencies can be passed in as parameters to the method. The injector will exercise the bindings for each of these before invoking the method.
+```java
+@Provides @PayPal
+CreditCardProcessor providePayPalCreditCardProcessor(
+    @Named("PayPal API key") String apiKey) {
+    PayPalCreditCardProcessor processor = new PayPalCreditCardProcessor();
+    processor.setApiKey(apiKey);
+    return processor;
+}
+```
+
+### 5. Provider Bindings
+> When your `@Provides` methods start to grow complex, you many consider moving them to a class of their own. The provider class implements Guice's Provider interface, which is a simple, general interface for supplying values:
+```java
+public interface Provider<T> {
+    T get();
+}
+```
+
+The following implementation class has dependencies of its own, which it receives via its `@Inject` - annotated constructor. It implements the `Provider` interface to define what's returned with complete type safety.
+```java
+public class DatabaseTransactionLogProvider implements Provider<TransactionLog> {
+    private final Connection connection;
+
+    @Inject
+    public DatabaseTransactionLogProvider(Connection connection) {
+        this.connection = connection;
+    }
+
+    // 此处应该是 @Override
+    public TransactionLog get() {
+        DatabaseTransactionLog transactionLog = new DatabaseTransactionLog();
+        transactionLog.setConnection(connection);
+        return transactionLog;
+    }
+}
+```
+
+Finally we bind to the provider using he `.toPrivider` clause:
+```java
+public class BillingModule extends AbstractModule {
+    @Override
+    protected void configure() {
+        bind(TransactionLog.class)
+            .toProvider(DatabaseTransactionLogProvider.class);
+    }
+}
+```
+
+### 6. Untargeted Bindings
+
+### 7. [Constructor Bindings](https://github.com/google/guice/wiki/ToConstructorBindings)
+
+
+### 8. Built-in Bindings
+> Alongside explicit and just-in-time bindings additional bindings are automatically included in the injector. Only the injector can create these bindings and attempting to bind them yourself is an error.
+
+#### Loggers
+
+#### The Injector
+
+#### Providers
+
+#### TypeLiterals
+
+#### The Stage
+
+#### MembersInjectors
+
+
+### 9. Just-In-Time Bindings
+### 10. Multibindings
+### 11. Restricting the Binding Source
+
+## Injections
+### Injecting Providers
+
+
 # Reference
 * [Google Guice Wiki](https://github.com/google/guice/wiki)
 * TutorialsPoint: [Google Guice -- Constructor Injection](https://www.tutorialspoint.com/guice/guice_constructor_injection.htm)
