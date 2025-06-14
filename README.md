@@ -262,6 +262,96 @@ BillingService service = injector.getInstance(BillingService.class);
     * 如果是单例绑定，缓存下来
 
 
+## Guice Mental Model
+> This page walks through a simplified model of Guice's implementation, which should make it easier to think about how it works.
+
+### Guice is a map
+> Fundamentally, Guice helps you create and retrieve objects for your application to use. These objects that your application needs are called **dependencies**.
+> You can think of Guice as being a map [**guice-map**]. Your application code declares the dependencies it needs, and Guice fetches them for you from its map. Each entry in the "Guice map" has two parts:
+> * **Guice key:** a key in the map which is used to fetch a particular value from the map.
+> * **Provider:** a value in the map which is used to create objects for your application.
+
+#### 1. Guice keys
+> Guice uses `Key` to identify a dependency that can be resolved using the "Guice map".
+```java
+class Greeter {
+    private final String message;
+    private final int count;
+    
+    // Greeter declares that it needs a string message and an integer
+    // representing the number of time the message to be printed.
+    // The @Inject annotation marks this constructor as eligible to be used by Guice.
+    @Inject
+    Greeter(@Message String message, @Count int count) {
+        this.message = message;
+        this.count = count;
+    }
+
+    void sayHello() {
+        for (int i = 0; i < count; i++) {
+            System.out.println(message);
+        }
+    }
+}
+```
+The `Greeter` class declares two dependencies in its constructor and those dependencies are represented as `Key` in Guice:
+* `@Message String` --> `Key<String>`
+* `@Count int` --> `Key<Integer>`
+
+Applications often have dependencies that are of the same type. Guice uses **binding annotations** to distinguish dependencies that are of the same type, that is to make the type more specific:
+```java
+final class MultilingualGreeter {
+   private String englishGreeting;
+   private String spanishGreeting;
+   
+   @Inject
+   MultilingualGreeter(@English String englishGreeting, @Spanish String spanishGreeting) {
+      this.englishGreeting = englishGreeting;
+      this.spanishGreeting = spanishGreeting;
+   }
+}
+```
+`Key` with binding annotations can be created as:
+```java
+Key<String> englishGreetingKey = Key.get(String.class, English.class);
+Key<String> spanishGreetingKey = Key.get(String.class, Spanish.class);
+```
+
+✅ To summarize: Guice Key is a type combined with an optional binding annotation used to identify dependencies.
+
+#### 2. Guice `Provider`s
+> Guice uses `Provider` to represent factories in the "Guice map" that are capable of creating objects to satisfy dependencies.
+
+`Provider` is an interface with a single method:
+```java
+interface Provider<T> {
+   /** Provides an instance of T.**/
+   T get();
+}
+```
+Each class that implements Provider is a bit of code that knows how to give you an instance of T. It could call `new T()`, it could construct T in some other way, or it could return you a precomputed instance from a cache.
+
+
+### Using Guice
+There are two parts to using Guice:
+1. **Configuration**: your application adds things into the "Guice map".
+2. **Injection**: your application asks Guice to create and retrieve objects from the map.
+
+#### 1. Configuration
+> Guice maps are configured using Guice modules (and **Just-In-Time bindings**). A Guice module is a unit of configuration logic that adds things into the Guice map. There are two ways to do this:
+> 1. Adding method annotations like `@Provides`
+> 2. Using the Guice Domain Specific Language (DSL).
+
+#### 2. Injection
+> You don't pull things out of a map, you declare that you need them. This is the essence of dependency injection. If you need something, you don't go out and get it from somewhere, or even ask a class to return you something. Instead, you simply declare that you can't do your work without it, and rely on Guice to give you what you need.
+
+即告诉 Guice 我的程序需要什么对象，Guice 负责创建并返回这个对象。
+
+
+### Dependencies form a graph
+> Dependencies form a directed graph, and injection works by doing a depth-first traversal of the graph from the object you want up through all its dependencies.
+
+
 # Reference
 * [Google Guice Wiki](https://github.com/google/guice/wiki)
 * TutorialsPoint: [Google Guice -- Constructor Injection](https://www.tutorialspoint.com/guice/guice_constructor_injection.htm)
