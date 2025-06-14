@@ -352,6 +352,60 @@ There are two parts to using Guice:
 > Dependencies form a directed graph, and injection works by doing a depth-first traversal of the graph from the object you want up through all its dependencies.
 
 
+## Scopes
+> By default, Guice returns a new instance each time it supplies a value. This behaviour is configurable via scopes. Scopes allow you to reuse instances: for the lifetime of an application, a session, or a request.
+
+### Built-in scopes
+#### 1. Singleton
+> Guice comes with a built-in @Singleton scope that reuses the same instance during the lifetime of an application within a single injector.
+> ✅ Both javax.inject.Singleton and com.google.inject.Singleton are supported by Guice, but prefer the standard javax.inject.Singleton since it is also supported by other injection frameworks like Dagger.
+
+#### 2. RequestScope
+> The servlet extension includes additional scopes for web apps such as `@RequestScoped`.
+
+
+### Applying scopes
+> Guice uses annotations to identify scopes. Specify the scope for a type by applying the scope annotation to the implementation class. As well as being functional, this annotation also serves as documentation.
+> Guice 通过是用**注释**识别范围。
+
+1. `@Singleton` indicates that the class is intended to be threadsafe.
+   ```java
+   @Singleton
+   public class InMemoryTransactionLog implements TransactionLog {
+      /* everything here should be threadsafe! */
+   }
+   ```
+2. Scopes can also be configured in bind statements:
+   ```java
+   bind(TransactionLog.class).to(InMemoryTransactionLog.class).in(Singleton.class);
+   ```
+3. Scopes can also be configured annotating @Provides methods::
+   ```java
+   @Provides @Singleton
+   TransactionLog provideTransactionLog() {
+       ...
+   }
+   ```
+
+> If there's conflicting scopes on a type and in a bind() statement, the bind() statement's scope will be used. If a type is annotated with a scope that you don't want, bind it to Scopes.NO_SCOPE.
+
+
+### Eager Singletons
+
+### Choosing a scope
+> If the object is stateful, the scoping should be obvious. Per-application is @Singleton, per-request is @RequestScoped, etc. If the object is stateless and inexpensive to create, scoping is unnecessary. Leave the binding unscoped and Guice will create new instances as they're required.
+
+Singletons are most useful for:
+* stateful objects, such as configuration or counters
+* objects that are expensive to construct or lookup
+* objects that tie up resources (占用资源的对象), such as a database connection pool 
+
+### Scopes and Concurrency
+> Classes annotated `@Singleton` and `@SessionScoped` must be threadsafe. Everything that's injected into these classes must also be threadsafe. Minimize mutability to limit the amount of state that requires concurrency protection.
+
+### Using `NO_SCOPE` in tests
+> If you are testing a Guice module that uses scopes (especially custom scopes) but don't actually care about the scoping of the binding in the tests, you can use Guice's `Scopes.NO_SCOPE` to override a specific scope. `NO_SCOPE` is an implementation of Scope that returns a new instance every time an object is requested.
+
 # Reference
 * [Google Guice Wiki](https://github.com/google/guice/wiki)
 * TutorialsPoint: [Google Guice -- Constructor Injection](https://www.tutorialspoint.com/guice/guice_constructor_injection.htm)
